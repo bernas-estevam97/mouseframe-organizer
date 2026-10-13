@@ -1,13 +1,28 @@
 import customtkinter as ctk
 from tkinter import ttk
 
+from core.parser import sort_tags
+from core.excel_writer import LEAD_COLUMNS, UNMAPPED
+
 
 class PreviewTableFrame(ctk.CTkFrame):
     """
     Data preview widget using tkinter.ttk Treeview embedded in a CustomTkinter frame.
-    Displays parsed Table IDs, assigned Time Tags, matched Genotype, and Sex.
+    Displays parsed Table IDs, Animal IDs, timepoints, matched Genotype/Sex and run counts.
     Supports Light and Dark appearance modes.
     """
+
+    # (key, heading, width, anchor)
+    COLUMNS = [
+        ("table_id", "Table ID", 170, "w"),
+        ("animal_id", "Animal ID", 100, "w"),
+        ("timepoint", "Timepoint", 80, "center"),
+        ("week", "Week", 70, "center"),
+        ("genotype", "Genotype", 100, "center"),
+        ("sex", "Sex", 70, "center"),
+        ("runs", "Runs", 50, "center"),
+        ("metrics_count", "Metrics", 60, "center"),
+    ]
 
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
@@ -24,33 +39,18 @@ class PreviewTableFrame(ctk.CTkFrame):
         self.table_container.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         # Treeview widget
-        columns = ("table_id", "timepoint", "genotype", "sex", "group", "metrics_count")
-        
         self.style = ttk.Style()
         self.style.theme_use("clam")
 
         self.tree = ttk.Treeview(
             self.table_container,
-            columns=columns,
+            columns=[c[0] for c in self.COLUMNS],
             show="headings",
-            height=8
+            height=10
         )
-
-        # Configure headings
-        self.tree.heading("table_id", text="Table ID")
-        self.tree.heading("timepoint", text="Time Tag")
-        self.tree.heading("genotype", text="Genotype")
-        self.tree.heading("sex", text="Sex")
-        self.tree.heading("group", text="Group")
-        self.tree.heading("metrics_count", text="Metrics Parsed")
-
-        # Column widths
-        self.tree.column("table_id", width=160, anchor="w")
-        self.tree.column("timepoint", width=90, anchor="center")
-        self.tree.column("genotype", width=110, anchor="center")
-        self.tree.column("sex", width=80, anchor="center")
-        self.tree.column("group", width=130, anchor="center")
-        self.tree.column("metrics_count", width=110, anchor="center")
+        for key, heading, width, anchor in self.COLUMNS:
+            self.tree.heading(key, text=heading)
+            self.tree.column(key, width=width, anchor=anchor)
 
         # Scrollbars
         v_scrollbar = ttk.Scrollbar(self.table_container, orient="vertical", command=self.tree.yview)
@@ -98,37 +98,18 @@ class PreviewTableFrame(ctk.CTkFrame):
         self.tree.tag_configure("mapped", background=mapped_bg, foreground=mapped_fg)
         self.tree.tag_configure("unmapped", background=unmapped_bg, foreground=unmapped_fg)
 
-    def update_data(self, data, mapping_dict=None):
-        """Populates the preview table with parsed records."""
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+    def update_data(self, records, has_mapping=False):
+        """Populates the preview table with records from core.excel_writer.build_records."""
+        self.tree.delete(*self.tree.get_children())
 
-        if not data:
-            return
-
-        from core.parser import group_data_by_tag
-        from core.mapping import match_table_id
-
-        w_groups = group_data_by_tag(data)
-
-        for tag, group_data in w_groups.items():
-            for entry in group_data:
-                table_id = entry.get("Table ID", "")
-                metric_keys = [k for k in entry.keys() if k not in ("Table ID", "Sheet_Source")]
-
-                geno, sex = None, None
-                if mapping_dict:
-                    geno, sex = match_table_id(table_id, mapping_dict)
-
-                geno_str = geno if geno else "Unmapped"
-                sex_str = sex if sex else "Unmapped"
-                group_str = f"{geno_str} {sex_str}".strip()
-
-                tag_name = "mapped" if (geno and sex) else ("unmapped" if mapping_dict else "")
-
-                self.tree.insert(
-                    "",
-                    "end",
-                    values=(table_id, tag, geno_str, sex_str, group_str, len(metric_keys)),
-                    tags=(tag_name,)
-                )
+        for r in sorted(records, key=lambda r: sort_tags(r["Timepoint"])):
+            metrics = sum(1 for k, v in r.items() if k not in LEAD_COLUMNS and v is not None)
+            mapped = r["Genotype"] != UNMAPPED and r["Sex"] != UNMAPPED
+            tag_name = "mapped" if mapped else ("unmapped" if has_mapping else "")
+            self.tree.insert(
+                "",
+                "end",
+                values=(r["Table ID"], r["Animal ID"], r["Timepoint"], r["Week"],
+                        r["Genotype"], r["Sex"], r["Runs"], metrics),
+                tags=(tag_name,)
+            )
