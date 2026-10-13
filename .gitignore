@@ -1,0 +1,45 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Distribution & Build artifacts (PyInstaller / Nuitka / setuptools)
+build/
+dist/
+*.eggs/
+*.egg-info/
+*.egg
+*.spec
+
+# Generated Output Files & Logs
+MFrame_clean_output_*.xlsx
+*.log
+
+# IDEs and Code Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# OS / Windows specific files
+Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+*.stackdump
+
+# Environment variables & secrets
+.env
+.env.local
