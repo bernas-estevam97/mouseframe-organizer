@@ -1,6 +1,6 @@
 # CLAUDE.md: MouseFrame Organizer
 
-Last updated: 2026-10-13
+Last updated: 2026-10-20
 
 Project guide, loaded automatically by Claude Code. It is the guide for humans and agents: what the project is, how to run and test it, the rules the code follows, and the history of what changed and why. Update it (and the date above) whenever you change behavior, commands or conventions.
 
@@ -28,7 +28,8 @@ Run from the project root. Shell examples use Git Bash; PowerShell equivalents u
 | Run pipeline without GUI | `venv/Scripts/python.exe -c "from core.excel_writer import process_and_export_file as p; print(p('in.xlsx', 'map.csv', 'out_dir'))"` |
 
 - Build output goes to `dist/MouseFrameOrganizer/`; ship that folder zipped. `build/`, `dist/` and `*.spec` are git-ignored. A local `main.spec` from an earlier `--onefile` build named `main` may exist; it is stale, use the command above instead.
-- Runtime log of the app (including built exe): `~/mouseframe_organizer.log`.
+- Runtime log of the app (including built exe): `~/mouseframe_organizer.log`. Last paths and theme: `~/mouseframe_organizer_settings.json` (written on window close).
+- App name and version: `core/__init__.py` (`APP_NAME`, `__version__`, now `1.1.0`). Bump the version when behavior changes; it appears in the window title, header and the `Info` sheet.
 - Pinned dependencies (`requirements.txt`): `customtkinter==6.0.0`, `openpyxl==3.1.5`, `pandas==3.0.6`. PyInstaller is a build tool only and is not listed there.
 - When reading untrusted workbooks from a script, use `python -I` (isolated mode).
 
@@ -36,8 +37,10 @@ Run from the project root. Shell examples use Git Bash; PowerShell equivalents u
 
 ```text
 main.py                 logging -> stdout/stderr guard -> MouseframeOrganizerApp
-gui/app.py              form + validation (_read_inputs) -> _run_in_background(work, on_success)
-  Preview  -> core.parser.find_table_data -> core.mapping.load_mapping_file -> core.excel_writer.build_records -> gui.preview_table
+gui/app.py              header, form + validation (_read_inputs), fixed footer (progress, status, Open file/folder)
+                        -> _run_in_background(work, on_success, error_title, indeterminate)
+  Preview  -> core.parser.find_table_data -> core.mapping.load_mapping_file -> core.excel_writer.build_records
+           -> gui.preview_table (sortable table, "Only unmapped" filter, Warnings view)
   Export   -> core.excel_writer.process_and_export_file
 core/parser.py          workbook -> list of table dicts {Table ID, Sheet_Source, Runs, Converted, <metrics>}
                         parse_table_id(): Table ID -> (Animal ID, Timepoint, Week)
@@ -49,7 +52,8 @@ core/excel_writer.py    build_records() -> records + warnings (shared by preview
 
 - `core/` has no GUI imports and can be used from scripts and tests. `gui/` holds all Tk code.
 - `process_and_export_file(...)` returns `(output_path, warnings)`. `load_mapping_file(...)` returns `(mapping_dict, genotype_index)`; `({}, {})` when no path is given.
-- Output sheet order: `Summary_Per_Animal`, `Group_Statistics` (only with a mapping), `T1`…`Tn` (sorted by `sort_tags`), `Processing_Log` (only with warnings).
+- Output sheet order: `Summary_Per_Animal`, `Group_Statistics` (only with a mapping), `T1`…`Tn` (sorted by `sort_tags`), `Processing_Log` (only with warnings), `Info` (always: version, date, input paths, settings).
+- Organizer tab is not scrollable on purpose (a scrollable frame around it hid the footer below the fold and nested two scroll areas). The minimum window size (900×740) keeps the form and a few preview rows visible.
 
 ## Domain rules (do not break)
 
@@ -59,8 +63,8 @@ core/excel_writer.py    build_records() -> records + warnings (shared by preview
 - **Runs**: a table can hold several runs (separated by `BREAK` rows); metrics are averaged over runs, `Runs` stores the count. A table ends at the next `Table ID` in the same column.
 - **Statistics unit is the animal**: `Summary_Per_Animal` averages repeated tables per Animal ID + Timepoint first; `Group_Statistics` (N, Mean, SEM with ddof=1) is computed over those per-animal rows.
 - **Mapping match**: mapping ID tokens must equal the leading tokens of the Table ID (case-insensitive, split on `_`, `-`, spaces); longest key wins. Never substring matching. IDs are read as text (`dtype=str`). Conflicting duplicate IDs raise `ValueError`.
-- **Unit threshold**: values above the threshold (default 500) are divided by 1000 and counted as a warning. It is a heuristic (marked `ponytail:` in `parser.py`).
-- **Never fail silently**: data problems become entries in the warnings list (status bar + `Processing_Log`); bad inputs (missing file, missing folder, `.xls`, bad mapping) raise clear exceptions shown in a dialog.
+- **Decimal-fix threshold**: values whose absolute value is above the threshold (default 500) are divided by 1000 and counted as a warning. Reason (confirmed by the user, 2026-10-20): in Excel set to a `,`-decimal language, a pasted `2.456` cm is read with `.` as thousands separator and becomes `2456`. Negative values (Overlap) are fixed too. Damaged values that stay below the threshold (originals < threshold/1000 cm) are missed; marked `ponytail:` in `parser.py`.
+- **Never fail silently**: data problems become entries in the warnings list (Warnings view + `Processing_Log`); bad inputs (missing file, missing folder, `.xls`, bad mapping) raise clear exceptions shown in a dialog.
 
 ## Code style and conventions
 
@@ -74,6 +78,7 @@ core/excel_writer.py    build_records() -> records + warnings (shared by preview
 - Files written by the app: save to `<name>.part`, then `os.replace` (no half-written workbooks). Never write `NaN` into cells; write `None`.
 - Excel styling constants (fonts, fills, borders, pastel palettes) live at the top of `core/excel_writer.py`; reuse them.
 - `main.py` must replace `None` `sys.stdout`/`sys.stderr` before importing customtkinter (windowed builds crash otherwise).
+- GUI look: no emoji in labels or buttons (they render tiny and monochrome in Tk on Windows). Export is the primary (filled) button, Preview the secondary (outlined) one. Hints use `HINT_COLOR` in `gui/app.py`. ttk widgets do not follow customtkinter scaling: scale pixel sizes with `ctk.ScalingTracker.get_widget_scaling`.
 - UI text and code comments are in English. Sex labels accept English and Portuguese (`MALE_LABELS`, `FEMALE_LABELS`).
 - Tests: stdlib `unittest` only, in `tests/test_core.py`, using a synthetic workbook built in a temp dir (no real data needed). Add one test per new parsing/matching rule or bug fix. Run the suite before claiming work is done.
 - Docs: when behavior changes, update `README.md`, `gui/tutorial.py` and this file in the same change.
@@ -123,7 +128,7 @@ core/excel_writer.py    build_records() -> records + warnings (shared by preview
 - `core/mapping.py`: text dtype, CSV separator sniffing, BOM-safe, conflict detection, `match_key` (token prefix, longest wins).
 - `core/excel_writer.py`: `build_records` (shared by preview and export, collects warnings), `build_summary`, `build_group_stats`, `_write_df`, `_apply_group_fills`, atomic save. `process_and_export_file` now returns `(output_file, warnings)`.
 - `gui/app.py`: input validation in one place, `_run_in_background`, UI-call queue, fixed geometry/theme/open-folder.
-- `gui/preview_table.py`: shows Animal ID, Timepoint, Week, Runs; sorted by timepoint.
+- `gui/preview_table.py`: shows Animal ID, Timepoint, Week, Runs; sortable; unmapped filter; Warnings view.
 - `gui/tutorial.py`: matching rules, summary sheets, Runs, Processing_Log explained.
 - `main.py`: file logging, Tk callback exception logging, PyInstaller-aware assets path, `None` stdout/stderr guard for windowed builds.
 - `requirements.txt`: only direct dependencies, pinned: `customtkinter==6.0.0`, `openpyxl==3.1.5`, `pandas==3.0.6`. Dropped `numpy` (comes with pandas) and `pillow` (only used by a PNG-icon fallback for a file that does not exist; fallback removed).
@@ -141,6 +146,22 @@ Removed: `safe_sheet_title`, unused `raw_strings`/`rename_map` parameters of `fi
 - Bug found while testing: in `--windowed` builds `sys.stderr` is `None`. customtkinter writes a warning to it when its font fails to load (seen with a path over 260 characters), and the app crashed on start-up. Fixed in `main.py` by replacing `None` streams with `os.devnull` before importing customtkinter. Verified: the same long-path build now starts.
 - PyInstaller 6.22.3 is installed in the venv as a build tool. It is not in `requirements.txt`.
 
+## GUI and usability review (2026-10-20)
+
+Review of look and wording, then fixed:
+
+- Tutorial said the threshold converted mm/µm to cm (wrong factor). Replaced by the real reason (decimal-separator damage), renamed "Decimal-fix threshold"; negative damaged values are now fixed too (`abs()`).
+- Warnings were cut to 5 in the status label: now a Warnings view next to the preview table.
+- Status and progress were below the fold inside a scrollable tab: now a fixed footer, with Open file / Open folder buttons for the last export. Preview uses an indeterminate progress bar.
+- Error dialogs now name the log file.
+- New `Info` sheet records version, date, input/mapping paths and settings.
+- Look: emoji removed, primary/secondary buttons, aligned Browse buttons with a small ✕ to clear the mapping, hints in their own grid column, Treeview with themed `CTkScrollbar`, flat headers, DPI-scaled row height, selection color.
+- Wording: style names "Color genotype cells" / "No colors" / "Color whole rows", "Add summary sheets", one app name "MouseFrame Organizer" with version.
+- Preview: sortable columns, "Only unmapped" filter, metrics shown as `n/8` with amber rows when incomplete.
+- Default theme "System"; last paths and theme remembered.
+- Dead code removed: `group_data_by_tag`, `match_table_id` (tests use `match_key`).
+- Considered and skipped: drag-and-drop (needs `tkinterdnd2`). Future idea from the user: try PySide6; `core/` has no GUI imports, so only `gui/` would be rewritten.
+
 ## Behavior changes to know
 
 - `process_and_export_file` returns a tuple `(path, warnings)` instead of a path.
@@ -151,14 +172,15 @@ Removed: `safe_sheet_title`, unused `raw_strings`/`rename_map` parameters of `fi
 
 ## Verification done
 
-- `python -m unittest discover tests`: 8 tests pass.
+- `python -m unittest discover tests`: 8 tests pass (2026-10-20, with negative decimal fix and `Info` sheet checks).
+- Scripted GUI test (2026-10-20, synthetic workbook): preview, Warnings view, sorting, unmapped filter, light/dark switch, user guide, export and Open buttons checked on screenshots.
 - Full run on `data sheet classic FP SCA2.xlsx` with a test mapping: 600 tables, sheets `Summary_Per_Animal`, `Group_Statistics`, `T1`–`T21`, `Processing_Log`; 595 summary rows; 7 warnings (5 duplicates, unmapped tables, 1 unused mapping ID).
 - GUI smoke test (scripted, real window): window 980×820, preview fills 600 rows, export succeeds, theme switch works.
 
 ## Open items / ideas
 
 - Stride Width `(L)` and `(R)` are merged into one column (original design). Add a side column if the side matters for analysis.
-- The threshold/divide-by-1000 rule is a heuristic. Replace it with an explicit unit setting if MouseFrame exports in other units.
+- The decimal-fix rule misses damaged values that stay below the threshold. Possible upgrades: flag whole-number metric values (real averages almost never are), or check `cell.number_format` for a thousands format (`#,##0`) that Excel applies when it misreads the separator. Needs a real damaged file to confirm.
 - The mapping file must have a header row; a file without one loses its first subject. Consider header detection.
 - No GUI-level automated tests in the repo; the smoke test was run ad hoc.
 - Optional: long-format export (one row per animal × timepoint × metric) for R/SPSS mixed models.

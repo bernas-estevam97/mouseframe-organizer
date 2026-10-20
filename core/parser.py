@@ -94,8 +94,10 @@ def find_table_data(workbook_path, threshold=500.0):
                         value = _to_number(ws.cell(row=r, column=col_index + 1).value)
                         if value is None:
                             continue
-                        # ponytail: unit heuristic, values above threshold assumed to be in 1/1000 of the expected unit
-                        if threshold is not None and value > threshold:
+                        # Locale decimal-separator damage: '2.456' pasted into a ',' locale becomes 2456.
+                        # ponytail: damaged values below the threshold (from originals < 0.5 cm) are missed,
+                        # detect via cell.number_format if that ever matters
+                        if threshold is not None and abs(value) > threshold:
                             value /= 1000.0
                             converted += 1
                         table_values[DEFAULT_RENAME_MAP.get(label, label)].append(value)
@@ -148,15 +150,6 @@ def parse_table_id(table_id, sheet_source="Unknown"):
     animal_id = "_".join(animal_parts) or str(table_id).strip()
     timepoint = session or week or sheet_source or "Unknown"
     return animal_id, timepoint, week or ""
-
-
-def group_data_by_tag(data):
-    """Groups extracted table entries by timepoint (session token, week label or sheet name)."""
-    w_groups = defaultdict(list)
-    for entry in data:
-        _, timepoint, _ = parse_table_id(entry.get("Table ID", ""), entry.get("Sheet_Source", "Unknown"))
-        w_groups[timepoint].append(entry)
-    return w_groups
 
 
 def sort_tags(tag):

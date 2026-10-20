@@ -9,7 +9,7 @@ from openpyxl import Workbook, load_workbook
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.parser import find_table_data, parse_table_id, normalize_week, sort_tags
-from core.mapping import load_mapping_file, match_table_id
+from core.mapping import load_mapping_file, match_key
 from core.excel_writer import build_records, process_and_export_file
 
 SL_LF = "Stride length left front average in cm:"
@@ -36,8 +36,8 @@ class CoreTests(unittest.TestCase):
         ws.title = "4W"
         # two runs separated by BREAK -> averaged, Runs=2
         _table(ws, 1, "2199_1R_T1_4W", [(SL_LF, 8.0), (SW_FL, 1.0), ("---BREAK---", None), (SL_LF, 10.0), (SW_FL, 3.0)])
-        # comma decimal string, value above threshold, missing Overlap Right
-        _table(ws, 8, "2200_1L_T1_4W", [(SL_LF, "7,5"), (SW_FR, 1200)])
+        # comma decimal string; '1.2' and '-1.456' damaged to 1200 / -1456 by a ',' locale
+        _table(ws, 8, "2200_1L_T1_4W", [(SL_LF, "7,5"), (SW_FR, 1200), (OV_R, -1456)])
         # duplicate of the first table in the same sheet
         _table(ws, 15, "2199_1R_T1_4W", [(SL_LF, 6.0), (SW_FL, 2.0)])
         ws2 = wb.create_sheet("56W+1")
@@ -66,7 +66,8 @@ class CoreTests(unittest.TestCase):
         second = next(d for k, d in data.items() if k[1] == "2200_1L_T1_4W")
         self.assertAlmostEqual(second[SL_LF], 7.5)
         self.assertAlmostEqual(second["Stride Width Front average in cm:"], 1.2)
-        self.assertEqual(second["Converted"], 1)
+        self.assertAlmostEqual(second[OV_R], -1.456)  # negative values are fixed too
+        self.assertEqual(second["Converted"], 2)
         stacked = next(d for k, d in data.items() if k[1] == "3220_T14_56+1W")
         self.assertAlmostEqual(stacked[SL_LF], 9.0)
 
@@ -87,9 +88,9 @@ class CoreTests(unittest.TestCase):
 
     def test_mapping_match(self):
         mapping, geno_index = load_mapping_file(self.map_csv)
-        self.assertEqual(match_table_id("2199_1R_T1_4W", mapping), ("SCA2", "F"))  # longest key wins
-        self.assertEqual(match_table_id("2199_1L_T1_4W", mapping), ("WT", "M"))
-        self.assertEqual(match_table_id("21990_T1_4W", mapping), (None, None))  # no partial-number match
+        self.assertEqual(match_key("2199_1R_T1_4W", mapping), "2199_1R")  # longest key wins
+        self.assertEqual(match_key("2199_1L_T1_4W", mapping), "2199")
+        self.assertIsNone(match_key("21990_T1_4W", mapping))  # no partial-number match
         self.assertEqual(set(geno_index), {"wt", "sca2"})
 
     def test_mapping_errors(self):
@@ -114,7 +115,10 @@ class CoreTests(unittest.TestCase):
     def test_export(self):
         out, warnings = process_and_export_file(self.xlsx, self.map_csv, self.dir)
         wb = load_workbook(out)
-        self.assertEqual(wb.sheetnames, ["Summary_Per_Animal", "Group_Statistics", "T1", "T14", "Processing_Log"])
+        self.assertEqual(wb.sheetnames, ["Summary_Per_Animal", "Group_Statistics", "T1", "T14", "Processing_Log", "Info"])
+        info = dict(wb["Info"].iter_rows(min_row=2, values_only=True))
+        self.assertEqual(info["Tables"], 5)
+        self.assertEqual(info["Mapping file"], os.path.abspath(self.map_csv))
         summary = list(wb["Summary_Per_Animal"].iter_rows(values_only=True))
         header = summary[0]
         row = next(r for r in summary if r[0] == "2199_1R")

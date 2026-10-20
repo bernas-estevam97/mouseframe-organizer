@@ -7,13 +7,14 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+from . import APP_NAME, __version__
 from .parser import find_table_data, normalize_week, parse_table_id, sort_tags, METRIC_COLUMNS, META_KEYS
 from .mapping import load_mapping_file, match_key
 
 # Visual Representation Modes
-MODE_PASTEL_ACCENTS = "Pastel Header Tag + Explicit Columns"
-MODE_COLUMNS_ONLY = "Explicit Columns Only (Clean White Grid)"
-MODE_SOFT_ROW_FILLS = "Soft Pastel Row Fills"
+MODE_PASTEL_ACCENTS = "Color genotype cells"
+MODE_COLUMNS_ONLY = "No colors"
+MODE_SOFT_ROW_FILLS = "Color whole rows"
 
 VISUAL_MODES = [MODE_PASTEL_ACCENTS, MODE_COLUMNS_ONLY, MODE_SOFT_ROW_FILLS]
 
@@ -130,7 +131,8 @@ def build_records(data, mapping_dict=None, threshold=None):
                 warnings.append(f"'{table_id}' (sheet '{sheet}'): missing {', '.join(missing)}")
         if entry.get("Converted"):
             warnings.append(
-                f"'{table_id}' (sheet '{sheet}'): {entry['Converted']} value(s) above {threshold} were divided by 1000."
+                f"'{table_id}' (sheet '{sheet}'): {entry['Converted']} value(s) larger than {threshold:g} "
+                f"were divided by 1000 (decimal-separator fix)."
             )
         sheet_week = normalize_week(sheet)
         if week and sheet_week and week != sheet_week:
@@ -266,7 +268,8 @@ def process_and_export_file(
         raise ValueError("Tables were found, but none contain the expected 'average in cm' metric rows.")
     df_all = df_all[LEAD_COLUMNS + metrics]
 
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    now = datetime.now()
+    timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
     base_dir = output_dir or os.path.dirname(os.path.abspath(input_file))
     output_file = os.path.normpath(os.path.join(base_dir, f"MFrame_clean_output_{timestamp}.xlsx"))
 
@@ -296,6 +299,22 @@ def process_and_export_file(
     if warnings:
         ws = wb.create_sheet("Processing_Log")
         _write_df(ws, pd.DataFrame({"Warning": warnings}), LOG_HEADER_FILL)
+
+    # Provenance: which inputs and settings produced this workbook
+    info = [
+        ("Created by", f"{APP_NAME} {__version__}"),
+        ("Created on", now.strftime("%Y-%m-%d %H:%M:%S")),
+        ("Input file", os.path.abspath(input_file)),
+        ("Mapping file", os.path.abspath(mapping_file) if mapping_file else "(none)"),
+        ("Decimal-fix threshold", f"{threshold:g}"),
+        ("Color style", visual_mode),
+        ("Summary sheets", "Yes" if generate_summary else "No"),
+        ("Tables", len(records)),
+        ("Animals", df_all["Animal ID"].nunique()),
+        ("Timepoints", len(tags)),
+        ("Warnings", len(warnings)),
+    ]
+    _write_df(wb.create_sheet("Info"), pd.DataFrame(info, columns=["Setting", "Value"]), SUMMARY_HEADER_FILL)
 
     progress("Saving workbook to disk...", 95)
     # Save to a temp file first so a crash or closed app never leaves a half-written workbook

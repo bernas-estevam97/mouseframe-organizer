@@ -68,11 +68,3 @@ def match_key(table_id, mapping_dict):
             best, best_len = key, n
     return best
 
-
-def match_table_id(table_id, mapping_dict):
-    """Returns (genotype, sex) for a Table ID, or (None, None) when no mapping key matches."""
-    key = match_key(table_id, mapping_dict)
-    if key is None:
-        return None, None
-    geno, sex = mapping_dict[key]
-    return geno or None, sex or None

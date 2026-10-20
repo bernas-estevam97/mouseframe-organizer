@@ -12,11 +12,10 @@ for _name in ("stdout", "stderr"):
     if getattr(sys, _name) is None:
         setattr(sys, _name, open(os.devnull, "w"))
 
-from gui.app import MouseframeOrganizerApp
+from gui.app import MouseframeOrganizerApp, LOG_FILE
 
 # Bundled resources live in sys._MEIPASS when frozen with PyInstaller
 BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-LOG_FILE = os.path.join(os.path.expanduser("~"), "mouseframe_organizer.log")
 
 
 def main():

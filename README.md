@@ -90,43 +90,44 @@ Saved as `MFrame_clean_output_<YYYY-MM-DD_HH-MM-SS>.xlsx` in the chosen output f
 | `Group_Statistics` | Only with a mapping file. Per Timepoint × Genotype × Sex: N animals, then Mean and SEM of every metric. Animals (not tables) are the statistical unit. SEM is empty when N = 1. |
 | `T1`, `T2`, … | One sheet per timepoint with every table: Table ID, Animal ID, Week, Genotype, Sex, Group, Runs, Source Sheet, metrics. |
 | `Processing_Log` | Only when there are warnings (see below). |
+| `Info` | App version, date, input and mapping file paths, and the settings used, so every result can be traced back. |
 
-The two summary sheets are produced when **Generate Summary Sheets** is checked. Unmapped tables show `Unmapped` in Genotype/Sex/Group.
+The two summary sheets are produced when **Add summary sheets** is checked. Unmapped tables show `Unmapped` in Genotype/Sex/Group.
 
 ### Visual styles
 
 | Style | Effect |
 | --- | --- |
-| Pastel Header Tag + Explicit Columns | Pastel fill on Genotype and Group cells only. |
-| Explicit Columns Only (Clean White Grid) | No fills; best for pasting into Prism, R or SPSS. |
-| Soft Pastel Row Fills | Pastel fill on the whole row. |
+| Color genotype cells (default) | Pastel fill on Genotype and Group cells only. |
+| No colors | No fills; best for pasting into Prism, R or SPSS. |
+| Color whole rows | Pastel fill on the whole row. |
 
 Colors need a mapping file. Each genotype gets a palette index; sex chooses the palette.
 
-### Unit conversion threshold
+### Decimal-fix threshold
 
-Any metric value above the threshold (default `500`) is divided by 1000, on the assumption that it was exported in a smaller unit. Every conversion is reported in `Processing_Log`. The real example file has a maximum value of 11.2 cm, so no conversion happens there.
+When values are pasted into Excel set to a language that uses `,` as the decimal mark, `.` is read as a thousands separator and a value such as `2.456` cm becomes `2456`. Any metric value whose size (positive or negative) is above the threshold (default `500`) is divided by 1000 to undo this. Every fix is reported in `Processing_Log`. A damaged value that stays below the threshold (for example `0.312` read as `312`) is not fixed. The real example file has a maximum value of 11.2 cm, so no fix happens there.
 
 ### Data-quality warnings
 
-Shown in the status bar after **Preview** (first 5) and written to `Processing_Log` after export:
+Listed in the **Warnings** view after **Preview** and written to `Processing_Log` after export:
 
 - Same Table ID more than once in one sheet (16W and 20W in the example file).
 - Table without any metric, or missing some of the expected metrics.
-- Values divided by 1000 by the threshold rule.
+- Values divided by 1000 by the decimal-fix threshold.
 - Table ID week that does not match the week sheet it is in.
 - Tables without a mapping match, and mapping IDs that matched no table.
 
 ## Using the app
 
-1. **Raw Mouseframe Excel File**: pick the `.xlsx` export. Paths pasted with quotes ("Copy as path") are accepted.
-2. **Metadata Mapping File** (optional): pick the CSV/Excel mapping. **Clear** removes it.
-3. **Output Directory** (optional): must exist; otherwise processing stops with an error.
-4. Choose a visual style and the threshold.
-5. **🔍 Preview Data**: parses without writing anything. Green rows are mapped, red rows are unmapped.
-6. **🚀 Process & Export Excel**: writes the workbook and offers to open its folder.
+1. **MouseFrame workbook**: pick the `.xlsx` export. Paths pasted with quotes ("Copy as path") are accepted.
+2. **Mapping file** (optional): pick the CSV/Excel mapping. **✕** removes it.
+3. **Output folder** (optional): must exist; otherwise processing stops with an error.
+4. Choose the group colors and the decimal-fix threshold.
+5. **Preview**: parses without writing anything. Green rows are mapped, red rows are unmapped, amber rows miss metrics (`Metrics` shows e.g. `6/8`). Click a column header to sort; **Only unmapped** lists the IDs missing from the mapping file. The **Warnings** view lists every warning.
+6. **Export workbook**: writes the workbook and offers to open it. **Open file** / **Open folder** in the bottom bar open the last export later.
 
-Both buttons are disabled while a job runs. Errors are shown in a dialog and logged with full traceback to `~/mouseframe_organizer.log`.
+Both buttons are disabled while a job runs. Errors are shown in a dialog that points to the log file `~/mouseframe_organizer.log` (full traceback). The last used paths and theme are saved to `~/mouseframe_organizer_settings.json` when the window closes.
 
 ## Project layout
 
@@ -136,7 +137,7 @@ core/parser.py        reads tables from the raw workbook; Table ID parsing; time
 core/mapping.py       loads the mapping file; Table ID -> (genotype, sex) matching
 core/excel_writer.py  records + warnings, summaries, group statistics, styled workbook export
 gui/app.py            main window; background jobs; thread-safe UI updates via a queue
-gui/preview_table.py  preview Treeview (light/dark aware)
+gui/preview_table.py  preview: sortable table with unmapped filter, and the warnings view
 gui/tutorial.py       in-app user guide
 tests/test_core.py    unittest suite on a synthetic workbook
 CLAUDE.md             project guide: commands, conventions, domain rules, change history
